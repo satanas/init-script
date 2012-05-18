@@ -15,4 +15,4 @@ Donate
 
 If you think this script was useful to you and want to do something for me, buy me a coffee_.
 
-.. _coffee: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=XUNXXJURA7FLW
+.. _coffee: https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=DXMUT3ZKL2YYE
