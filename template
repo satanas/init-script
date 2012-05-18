@@ -1,0 +1,240 @@
+#! /bin/sh
+#------------------------------------------------------------------------------
+# This script let you run any program as a daemon in /etc/init.d with functions
+# to start, restart, stop, check status and terminate the application. You must
+# put it in /etc/init.d with execution permissions and edit the Configuration
+# Parameters below.
+#
+# Based on the work of Jason Giedymin
+# https://github.com/JasonGiedymin/nginx-init-ubuntu
+#
+# Author:  Wil Alvarez <wil.alejandro AT gmail.com>
+# https://github.com/satanas/init-script
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+#                          Configuration Parameters
+#------------------------------------------------------------------------------
+
+DAEMON=/usr/local/bin/my_script           # App to be executed
+PS="my_script"                            # App name
+PIDNAME="my_script"                       # PID file name
+DESCRIPTION="My Script..."                # Long name
+RUNAS=root                                # Run as this user
+WAIT_FOR_PID=1                            # Wait before deleting pid file 1=Yes, 0=No
+SEC_TO_WAIT=5                             # Time to wait before deleting pid file
+
+#                 DO NOT TOUCH ANYTHING ELSE BELOW THIS LINE
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+#                               Functions
+#------------------------------------------------------------------------------
+. /lib/lsb/init-functions
+
+#------------------------------------------------------------------------------
+#                               Consts
+#------------------------------------------------------------------------------
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+PIDFILE=$PIDNAME.pid
+PIDSPATH=/tmp
+SCRIPT_OK=0                             # Return code
+SCRIPT_ERROR=1                          # Return codes
+TRUE=1
+FALSE=0
+PID_CMD="pidof -x  $PS"
+lockfile=/var/lock/subsys/tickets
+
+#------------------------------------------------------------------------------
+#                               Simple Tests
+#------------------------------------------------------------------------------
+
+# Test if daemon is a file and executable
+if [ -x $DAEMON ]
+then :
+else
+    echo "$DAEMON has no execution permission"
+    exit $SCRIPT_ERROR
+fi
+
+#------------------------------------------------------------------------------
+#                               Functions
+#------------------------------------------------------------------------------
+
+setFilePerms(){
+    if [ -f $PIDSPATH/$PIDFILE ]; then
+        chmod 400 $PIDSPATH/$PIDFILE
+    fi
+}
+
+isRunning() {
+    if [ $1 ]; then
+        pidof_daemon $1
+        PID=$?
+
+        if [ $PID -gt 0 ]; then
+            return 1
+        else
+            return 0
+        fi
+    else
+        pidof_daemon
+        PID=$?
+
+        if [ $PID -gt 0 ]; then
+            return 1
+        else
+            return 0
+        fi
+    fi
+}
+
+waitForPid () {
+    try=0
+
+    while test $try -lt 5 ; do
+        case "$1" in
+            'created')
+            if [ -f "$2" ] ; then
+                try=''
+                break
+            fi
+            ;;
+
+            'removed')
+            if [ ! -f "$2" ] ; then
+                try=''
+                break
+            fi
+            ;;
+        esac
+
+        try=`expr $try + 1`
+        sleep 1
+    done
+}
+
+status(){
+    isRunning
+    isAlive=$?
+
+    if [ "${isAlive}" -eq $TRUE ]; then
+        echo "$PIDNAME found running with processes: `$PID_CMD`"
+    else
+        echo "$PIDNAME is NOT running."
+    fi
+}
+
+removePIDFile(){
+    if [ $1 ]; then
+        if [ -f $1 ]; then
+            rm -f $1
+        fi
+    else
+        #Do default removal
+        if [ -f $PIDSPATH/$PIDFILE ]; then
+            echo "Removing PID file"
+            rm -f $PIDSPATH/$PIDFILE
+        fi
+    fi
+}
+
+start() {
+    log_daemon_msg "Starting $DESCRIPTION"
+
+    isRunning
+    isAlive=$?
+
+    if [ "${isAlive}" -eq $TRUE ]; then
+        log_end_msg $SCRIPT_ERROR
+    else
+        start-stop-daemon --start --quiet --chuid $RUNAS --make-pidfile --pidfile $PIDSPATH/$PIDFILE --exec $DAEMON &
+        setFilePerms
+        log_end_msg $SCRIPT_OK
+    fi
+}
+
+stop() {
+    log_daemon_msg "Stopping $DESCRIPTION"
+
+    isRunning
+    isAlive=$?
+    if [ "${isAlive}" -eq $TRUE ]; then
+        start-stop-daemon --stop --quiet --pidfile $PIDSPATH/$PIDFILE
+        if [ $WAIT_FOR_PID -gt 0 ]; then
+            waitForPid 'removed' $PIDSPATH/$PIDFILE
+        fi
+        removePIDFile
+        log_end_msg $SCRIPT_OK
+    else
+        log_end_msg $SCRIPT_ERROR
+    fi
+}
+
+terminate() {
+    log_daemon_msg "Force terminating (via KILL) $DESCRIPTION"
+
+    pidof_daemon
+    PID=$?
+
+    if [ $PID -gt 0 ]; then
+        kill $PID
+        removePIDFile
+        return 1
+    else
+        echo "$PIDNAME is NOT running."
+        return 0
+    fi
+
+    log_end_msg $SCRIPT_OK
+}
+
+destroy() {
+    log_daemon_msg "Force terminating and may include self (via KILLALL) $DESCRIPTION"
+    killall $PS -q >> /dev/null 2>&1
+    log_end_msg $SCRIPT_OK
+}
+
+pidof_daemon() {
+    PIDS=`$PID_CMD` || true
+
+    [ -e $PIDSPATH/$PIDFILE ] && PIDS2=`cat $PIDSPATH/$PIDFILE`
+
+    for i in $PIDS; do
+        if [ "$i" = "$PIDS2" ]; then
+            return $i
+        fi
+    done
+    return 0
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        sleep 1
+        start
+        ;;
+    status)
+        status
+        ;;
+    terminate)
+        $1
+        ;;
+    destroy)
+        $1
+        ;;
+    *)
+        FULLPATH=/etc/init.d/$PS
+        echo "Usage: $FULLPATH {start|stop|restart|status|terminate|destroy}"
+        echo "       The 'destroy' command should only be used as a last resort." 
+        exit 1
+        ;;
+esac
+
+exit 0
