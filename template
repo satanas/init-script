@@ -1,4 +1,4 @@
-#! /bin/sh
+#! /bin/bash
 #------------------------------------------------------------------------------
 # This script let you run any program as a daemon in /etc/init.d with functions
 # to start, restart, stop, check status and terminate the application. You must
