@@ -15,14 +15,16 @@
 #------------------------------------------------------------------------------
 #                          Configuration Parameters
 #------------------------------------------------------------------------------
+# Legend: 1=Yes, 0=No
 
 DAEMON=/usr/local/bin/my_script           # App to be executed
 PS="my_script"                            # App name
 PIDNAME="my_script"                       # PID file name
 DESCRIPTION="My Script..."                # Long name
 RUNAS=root                                # Run as this user
-WAIT_FOR_PID=1                            # Wait before deleting pid file 1=Yes, 0=No
-SEC_TO_WAIT=5                             # Time to wait before deleting pid file
+CREATE_PID=1                              # Create pid file (if app doesn't handle pid)
+WAIT_FOR_PID=1                            # Wait for pid deletion
+SEC_TO_WAIT=5                             # Time (seconds) to wait before deleting pid file
 
 #                 DO NOT TOUCH ANYTHING ELSE BELOW THIS LINE
 #------------------------------------------------------------------------------
@@ -148,7 +150,11 @@ start() {
     if [ "${isAlive}" -eq $TRUE ]; then
         log_end_msg $SCRIPT_ERROR
     else
-        start-stop-daemon --start --quiet --chuid $RUNAS --make-pidfile --pidfile $PIDSPATH/$PIDFILE --exec $DAEMON &
+        MAKE_PID=""
+        if [ $CREATE_PID -gt 0 ]; then
+            MAKE_PID="--make-pidfile"
+        fi
+        start-stop-daemon --start --quiet --chuid $RUNAS $MAKE_PID --pidfile $PIDSPATH/$PIDFILE --exec $DAEMON -b
         setFilePerms
         log_end_msg $SCRIPT_OK
     fi
